@@ -1,9 +1,10 @@
-name: Jalankan Bot Trading Bosq
+name: Ronda Otomatis Setiap 15 Menit
 
 on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
+  schedule:
+    # Mantra rahasia: Memerintahkan GitHub bangun otomatis setiap 15 menit
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Tombol manual tetap ada buat jaga-jaga
 
 jobs:
   run-bot:
@@ -23,5 +24,5 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Terbangkan Bot Meronda
+    - name: Jalankan Pengecekan Pasar
       run: python main.py
