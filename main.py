@@ -1,6 +1,5 @@
 import ccxt
 import pandas as pd
-import time
 from datetime import datetime
 
 # === KONFIGURASI BOT TRADING JALUR AWAN RENDER ===
@@ -33,52 +32,48 @@ def send_telegram_message(message):
 
 def run_bot():
     print("=== BOT TRADING JALUR RENDER AMAN AKTIF ===")
-    send_telegram_message("🚀 *BOT TRADING JALUR RENDER ONLINE!* 🚀\nBot berhasil dipindahkan dan hidup di awan Render.com, Bosq!")
     
-    active_position = None
-
-    while True:
-        try:
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=CANDLE_LIMIT)
-            df = pd.DataFrame(ohlcv, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume"])
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=CANDLE_LIMIT)
+        df = pd.DataFrame(ohlcv, columns=["Timestamp", "Open", "High", "Low", "Close", "Volume"])
+        
+        df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
+        
+        if len(df) < 52:
+            print("Data candle kurang dari batasan EMA 50!")
+            return
             
-            df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
+        ticker = exchange.fetch_ticker(SYMBOL)
+        current_price = ticker["last"]
+        
+        o1, h1, l1, c1 = df["Open"].iloc[-2], df["High"].iloc[-2], df["Low"].iloc[-2], df["Close"].iloc[-2]
+        o2, h2, l2, c2 = df["Open"].iloc[-3], df["High"].iloc[-3], df["Low"].iloc[-3], df["Close"].iloc[-3]
+        current_ema = df["EMA_50"].iloc[-2]
+        
+        # Logika Deteksi Sinyal Engulfing Terfilter EMA 50
+        if (c1 > o1) and (c2 < o2) and (c1 >= o2) and (o1 <= c2) and (c1 > current_ema):
+            sl = l2
+            tp = c1 + ((c1 - sl) * RISK_REWARD_RATIO)
+            msg = f"🟢 *[RENDER NOTIF] BUY TERFILTER!*\n\n🪙 Koin: {SYMBOL}\n📈 Harga Masuk: {c1}\n🛑 Batas Rugi (SL): {sl:.2f}\n🎯 Target Untung (TP): {tp:.2f}\n💡 _[INFO] Tren sedang Bullish di atas EMA 50._"
+            send_telegram_message(msg)
+            print(f"[{now}] Sinyal BUY Terkirim!")
             
-            if len(df) < 52:
-                time.sleep(30)
-                continue
-                
-            ticker = exchange.fetch_ticker(SYMBOL)
-            current_price = ticker["last"]
+        elif (c1 < o1) and (c2 > o2) and (o1 >= c2) and (c1 <= o2) and (c1 < current_ema):
+            sl = h2
+            tp = c1 - ((sl - c1) * RISK_REWARD_RATIO)
+            msg = f"🔴 *[RENDER NOTIF] SELL TERFILTER!*\n\n🪙 Koin: {SYMBOL}\n📈 Harga Masuk: {c1}\n🛑 Batas Rugi (SL): {sl:.2f}\n🎯 Target Untung (TP): {tp:.2f}\n💡 _[INFO] Tren sedang Bearish di bawah EMA 50._"
+            send_telegram_message(msg)
+            print(f"[{now}] Sinyal SELL Terkirim!")
             
-            o1, h1, l1, c1 = df["Open"].iloc[-2], df["High"].iloc[-2], df["Low"].iloc[-2], df["Close"].iloc[-2]
-            o2, h2, l2, c2 = df["Open"].iloc[-3], df["High"].iloc[-3], df["Low"].iloc[-3], df["Close"].iloc[-3]
-            current_ema = df["EMA_50"].iloc[-2]
+        else:
+            # Mengirim status online berkala ke Telegram agar kamu tahu bot tetap hidup meronda
+            status_msg = f"🚀 *BOT TRADING JALUR RENDER ONLINE!*\nBot berhasil meronda pasar pada {now}. Kondisi pasar: *Belum ada sinyal Engulfing yang valid.* Memantau aman, Bosq!"
+            send_telegram_message(status_msg)
+            print(f"[{now}] Ronda selesai, tidak ada sinyal. Status ONLINE terkirim.")
             
-            if active_position is None:
-                if (c1 > o1) and (c2 < o2) and (c1 >= o2) and (o1 <= c2) and (c1 > current_ema):
-                    sl = l2
-                    tp = c1 + ((c1 - sl) * RISK_REWARD_RATIO)
-                    active_position = {"type": "BUY", "entry": c1, "sl": l2, "tp": tp}
-                    msg = f"🟢 *[RENDER NOTIF] BUY TERFILTER!*\n\n🪙 Koin: {SYMBOL}\n📈 Entry: {c1}\n🛑 SL: {sl:.2f}\n🎯 TP: {tp:.2f}"
-                    send_telegram_message(msg)
-            
-                elif (c1 < o1) and (c2 > o2) and (o1 >= c2) and (c1 <= o2) and (c1 < current_ema):
-                    sl = h2
-                    tp = c1 - ((sl - c1) * RISK_REWARD_RATIO)
-                    active_position = {"type": "SELL", "entry": c1, "sl": h2, "tp": tp}
-                    msg = f"🔴 *[RENDER NOTIF] SELL TERFILTER!*\n\n🪙 Koin: {SYMBOL}\n📈 Entry: {c1}\n🛑 SL: {sl:.2f}\n🎯 TP: {tp:.2f}"
-                    send_telegram_message(msg)
-            
-            pos_status = "KOSONG" if active_position is None else f"KAWAL {active_position['type']}"
-            print(f"[{now}] Status: MONITORING | Harga BTC: {current_price} | Posisi: {pos_status}")
-            
-            time.sleep(30)
-            
-        except Exception as e:
-            print(f"Koneksi aman, sedang merestart: {e}")
-            time.sleep(30)
+    except Exception as e:
+        print(f"Ada kendala pembacaan pasar: {e}")
 
 if __name__ == "__main__":
     run_bot()
